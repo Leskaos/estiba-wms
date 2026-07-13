@@ -113,24 +113,24 @@ function compactObject(object) {
 }
 
 function createOperationId() {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
-        return globalThis.crypto.randomUUID();
-    }
+    let timestamp = Date.now();
+    let highResolution = Math.floor(globalThis.performance?.now?.() || 0) * 1000;
 
-    const bytes = new Uint8Array(16);
-    globalThis.crypto.getRandomValues(bytes);
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (character) => {
+        let random = Math.random() * 16;
 
-    const hexadecimal = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+        if (timestamp > 0) {
+            random = (timestamp + random) % 16;
+            timestamp = Math.floor(timestamp / 16);
+        } else if (highResolution > 0) {
+            random = (highResolution + random) % 16;
+            highResolution = Math.floor(highResolution / 16);
+        }
 
-    return [
-        hexadecimal.slice(0, 8),
-        hexadecimal.slice(8, 12),
-        hexadecimal.slice(12, 16),
-        hexadecimal.slice(16, 20),
-        hexadecimal.slice(20),
-    ].join('-');
+        const value = character === 'x' ? random : (random & 0x3) | 0x8;
+
+        return Math.floor(value).toString(16);
+    });
 }
 
 function validationMessage(data, fallback) {
@@ -667,28 +667,28 @@ async function locateFolio(form) {
     const position = state.selectedPosition;
     if (! position || ! ownSession()) return;
 
-    const values = Object.fromEntries(new FormData(form));
-    const descriptiveData = compactObject({
-        condicion_sag_id: values.condicion_sag_id,
-        variedad: values.variedad?.trim(),
-        calibre: values.calibre?.trim(),
-        marca: values.marca?.trim(),
-        exportadora: values.exportadora?.trim(),
-    });
-    const payload = {
-        operacion_id: createOperationId(),
-        numero_folio: values.numero_folio.trim().toUpperCase(),
-        tipo_bulto: values.tipo_bulto,
-        posicion_destino_id: position.id,
-        sesion_destino_id: ownSession().id,
-        version_destino_conocida: state.plan.version_plano,
-        generado_dispositivo_at: new Date().toISOString(),
-        ...(Object.keys(descriptiveData).length > 0 ? { datos_folio: descriptiveData } : {}),
-    };
-
     elements.locateError.textContent = '';
 
     try {
+        const values = Object.fromEntries(new FormData(form));
+        const descriptiveData = compactObject({
+            condicion_sag_id: values.condicion_sag_id,
+            variedad: values.variedad?.trim(),
+            calibre: values.calibre?.trim(),
+            marca: values.marca?.trim(),
+            exportadora: values.exportadora?.trim(),
+        });
+        const payload = {
+            operacion_id: createOperationId(),
+            numero_folio: values.numero_folio.trim().toUpperCase(),
+            tipo_bulto: values.tipo_bulto,
+            posicion_destino_id: position.id,
+            sesion_destino_id: ownSession().id,
+            version_destino_conocida: state.plan.version_plano,
+            generado_dispositivo_at: new Date().toISOString(),
+            ...(Object.keys(descriptiveData).length > 0 ? { datos_folio: descriptiveData } : {}),
+        };
+
         await withBusy('Registrando ubicación…', () => api('/api/movimientos/ubicar', {
             method: 'POST',
             body: JSON.stringify(payload),
@@ -697,7 +697,7 @@ async function locateFolio(form) {
         showToast(`Folio ${payload.numero_folio} ubicado correctamente.`);
         await refreshCurrent({ quiet: true });
     } catch (error) {
-        elements.locateError.textContent = error.message;
+        elements.locateError.textContent = error?.message || 'No fue posible preparar la ubicación en esta tablet.';
 
         if (error.status === 409) {
             await refreshCurrent({ quiet: true });
