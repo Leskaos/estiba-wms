@@ -112,6 +112,27 @@ function compactObject(object) {
     );
 }
 
+function createOperationId() {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+        return globalThis.crypto.randomUUID();
+    }
+
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hexadecimal = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+    return [
+        hexadecimal.slice(0, 8),
+        hexadecimal.slice(8, 12),
+        hexadecimal.slice(12, 16),
+        hexadecimal.slice(16, 20),
+        hexadecimal.slice(20),
+    ].join('-');
+}
+
 function validationMessage(data, fallback) {
     const messages = Object.values(data?.errors || {}).flat();
     return messages[0] || data?.message || fallback;
@@ -655,7 +676,7 @@ async function locateFolio(form) {
         exportadora: values.exportadora?.trim(),
     });
     const payload = {
-        operacion_id: crypto.randomUUID(),
+        operacion_id: createOperationId(),
         numero_folio: values.numero_folio.trim().toUpperCase(),
         tipo_bulto: values.tipo_bulto,
         posicion_destino_id: position.id,
@@ -800,7 +821,7 @@ async function moveFolio() {
             await api('/api/movimientos/mover', {
                 method: 'POST',
                 body: JSON.stringify({
-                    operacion_id: crypto.randomUUID(),
+                    operacion_id: createOperationId(),
                     folio_id: origin.folio.id,
                     posicion_destino_id: destination.id,
                     sesion_origen_id: originSession.id,
